@@ -1,40 +1,17 @@
-#!/usr/bin/env python
-# coding=utf-8
-# Copyright 2020 The HuggingFace Inc. team. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-"""
-Fine-tuning the library models for causal language modeling (GPT, GPT-2, CTRL, ...) on a text file or a dataset.
-
-Here is the full list of checkpoints on the hub that can be fine-tuned by this script:
-https://huggingface.co/models?filter=text-generation
-"""
-# You can also adapt this script on your own causal language modeling task. Pointers for this are left as comments.
-
 import logging
 import math
 import os
 import sys
 from dataclasses import dataclass, field
 from itertools import chain
+from os.path import join
 from typing import Optional
-import torch
-import datasets
-import stanza
-import spacy_stanza
-from datasets import load_dataset, load_metric
 
+import datasets
+import spacy_stanza
+import torch
 import transformers
+from datasets import load_dataset, load_metric
 from transformers import (
     CONFIG_MAPPING,
     MODEL_FOR_CAUSAL_LM_MAPPING,
@@ -50,30 +27,25 @@ from transformers import (
 from transformers.testing_utils import CaptureLogger
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version
-from transformers.utils.versions import require_version
-from training.models.compress.gpt2 import GPT2LMHeadModelCompress
-from training.models.compress.bert import BERTModelCompress
-from training.models.autoencoder_with_noise import AutoEncoderWithNoise
-from training.models.gpt_vae import GPT2VAE
-from training.models.ar import AR_for_cont
-from training.models.classifiers.gpt2 import Classifier_GPT2
-from training.models.classifiers.times import Classifier_Times
-from training.models.classifiers.pos import Classifier_POS
-from training.models.classifiers.tree import Classifier_Tree
-from training.models.classifiers.consistency import Classifier_Consistency
 
-from improved_diffusion.rounding import load_models, load_tokenizer
-
-# Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-check_min_version("4.17.0.dev0")
-
-# require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
+from controlable_generation.models.ar import AR_for_cont
+from controlable_generation.models.autoencoder_with_noise import AutoEncoderWithNoise
+from controlable_generation.models.classifiers.consistency import Classifier_Consistency
+from controlable_generation.models.classifiers.gpt2 import Classifier_GPT2
+from controlable_generation.models.classifiers.pos import Classifier_POS
+from controlable_generation.models.classifiers.times import Classifier_Times
+from controlable_generation.models.classifiers.tree import Classifier_Tree
+from controlable_generation.models.compress.bert import BERTModelCompress
+from controlable_generation.models.compress.gpt2 import GPT2LMHeadModelCompress
+from controlable_generation.models.gpt_vae import GPT2VAE
+from improved_diffusion.rounding import load_tokenizer
 
 logger = logging.getLogger(__name__)
 
 
 MODEL_CONFIG_CLASSES = list(MODEL_FOR_CAUSAL_LM_MAPPING.keys())
 MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
+
 
 def _collate_batch_helper(examples, pad_token_id, max_length, return_mask=False, pad_mask_id=None):
     if pad_mask_id is None:
@@ -88,12 +60,12 @@ def _collate_batch_helper(examples, pad_token_id, max_length, return_mask=False,
         return result, mask_
     return result
 
+
 @dataclass
 class ModelArguments:
     """
     Arguments pertaining to which model/config/tokenizer we are going to fine-tune, or train from scratch.
     """
-
     model_name_or_path: Optional[str] = field(
         default=None,
         metadata={
@@ -120,7 +92,7 @@ class ModelArguments:
         metadata={"help": "blcok or pad"},
     )
     roc_train: Optional[str] = field(
-        default='/juice/scr/xlisali/diffusion_lm/ROCstory',
+        default=join("datasets", "ROCstory"),
         metadata={"help": "roc story path"},
     )
     wiki_train: Optional[str] = field(
@@ -128,7 +100,7 @@ class ModelArguments:
         metadata={"help": "simple wiki path"},
     )
     e2e_train: Optional[str] = field(
-        default='/u/scr/xlisali/e2e_data',
+        default=join("datasets", "e2e_data"),
         metadata={"help": "simple wiki path"},
     )
 
@@ -212,7 +184,9 @@ class DataTrainingArguments:
     dataset_config_name: Optional[str] = field(
         default=None, metadata={"help": "The configuration name of the dataset to use (via the datasets library)."}
     )
-    train_file: Optional[str] = field(default=None, metadata={"help": "The input training data file (a text file)."})
+    train_file: Optional[str] = field(
+        default=None, metadata={"help": "The input training data file (a text file)."}
+    )
     validation_file: Optional[str] = field(
         default=None,
         metadata={"help": "An optional input evaluation data file to evaluate the perplexity on (a text file)."},
@@ -332,10 +306,6 @@ def get_corpus_rocstory(data_args):
 
         print(sentence_lst[:2], sentence_lst[-2:])
         return sentence_lst, {}
-
-
-
-
     elif data_args.experiment.startswith('roc') and data_args.task != 'data_teacher':
         print('loading dataset from ROCStory')
         nlp = English()
@@ -344,13 +314,8 @@ def get_corpus_rocstory(data_args):
         with open(f'{data_args.roc_train}/roc_train.json', 'r') as roc_reader:
             for row in roc_reader:
                 sentences = json.loads(row)[0].strip()
-        # with open(data_args.roc_train, 'r') as csvfile:
-        #     roc_reader = csv.reader(csvfile) #delimiter=' ', quotechar='|')
-        #     for row in roc_reader:
-        #         sentences = " ".join(row[2:])
                 word_lst = [x.text for x in tokenizer(sentences)]
                 sentence_lst.append(word_lst)
-        # sentence_lst = sentence_lst[1:]
         print(sentence_lst[:2])
     elif data_args.experiment.startswith('roc') and data_args.task == 'data_teacher':
         print('loading dataset from ROCStory')
@@ -438,8 +403,6 @@ def get_corpus_rocstory(data_args):
                 word_lst = [x.text for x in tokenizer(word_lst)]
                 sentence_lst.append(word_lst)
         print(sentence_lst[:2])
-
-
     elif data_args.experiment.startswith('e2e-back'):
         ordered_ = ['name', 'Type', 'area', 'customer rating', 'near',
                     'family friendly', 'food', 'price']
@@ -645,7 +608,6 @@ def main():
 
         raw_datasets.vocab = vocab
         raw_datasets['validation'] = raw_datasets['test']
-
     elif data_args.dataset_name is not None:
         # Downloading and loading a dataset from the hub.
         raw_datasets = load_dataset(
@@ -875,8 +837,6 @@ def main():
             config.vocab_size = len(tokenizer)
             print('\n Initializing the model from scratch \n' + '*' * 100)
 
-            # EDIT
-            # also loading the diffusion model.
             import json
             from improved_diffusion.script_util import create_model_and_diffusion, model_and_diffusion_defaults
             config_path = os.path.join(model_args.init_emb, "training_args.json")
@@ -1406,26 +1366,6 @@ def main():
             elif model_args.experiment == 'e2e-back-gen':
                 group_lst['labels'] = group_lst['input_ids']
             return group_lst
-
-        # def pad_function2(group_lst):
-        #     vocab_dict = raw_datasets.vocab
-        #
-        #     max_length = 64
-        #     seqlen = 64
-        #     group_lst['word_ids'] = _collate_batch_helper(group_lst['word_ids'], vocab_dict['PAD'], max_length)
-        #     max_src_length = max([len(xx) for xx in group_lst['src_ids']])
-        #     # print(max_src_length, seqlen)
-        #     max_src_length = min(seqlen, max_src_length)
-        #     group_lst['src_ids'], group_lst['src_mask'] = _collate_batch_helper(group_lst['src_ids'],
-        #                                                                         vocab_dict['PAD'],
-        #                                                                         max_src_length,
-        #                                                                         return_mask=True)
-        #
-        #     group_lst['input_ids'] = group_lst['word_ids']
-        #     group_lst['tgt_ids'] = group_lst['src_ids']
-        #     group_lst['labels'] = [[-100] * (len(x) * 2) + y for (x, y) in zip(group_lst['word_ids'], group_lst['src_ids'])]
-        #
-        #     return group_lst
 
         with training_args.main_process_first(desc="grouping texts together"):
             lm_datasets = tokenized_datasets.map(
