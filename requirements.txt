@@ -4,3 +4,5 @@ wandb~=0.13.6
 spacy~=3.4.3
 mpi4py~=3.1.4
 datasets~=2.7.1
+nltk~=3.8
+benepar~=0.2.0
