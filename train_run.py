@@ -10,15 +10,22 @@ def run(args):
         os.mkdir(folder_name)
 
     if args.experiment not in [
-        'e2e-tgt', 'e2e-tgt-pos', 'e2e-tgt-tree', 'e2e-tgt-gen-tree', 'e2e-tgt-gen-pos', 'e2e-back-gen',
-        'e2e-tgt-gen-length', 'e2e-tgt-gen-spans', 'e2e-back', 'simple-wiki', 'roc'
+        'e2e-tgt',
+        'e2e-tgt-pos', 'e2e-tgt-gen-pos',
+        'e2e-tgt-tree', 'e2e-tgt-gen-tree',
+        'e2e-back', 'e2e-back-gen',
+        'e2e-tgt-gen-length',
+        'e2e-tgt-gen-spans',
+        'simple-wiki',
+        'roc'
     ]:
         return
 
-    Model_FILE = args.experiment + \
-                 '_e={}_b={}_m={}_{}_{}_{}'.format(args.epoch, args.bsz * args.gradient_accumulation_steps,
-                                                   args.pretrained_model, args.dataset_config_name, args.seed,
-                                                   args.task)
+    Model_FILE = args.experiment + '_e={}_b={}_m={}_{}_{}_{}'.format(
+        args.epoch, args.bsz * args.gradient_accumulation_steps,
+        args.pretrained_model, args.dataset_config_name, args.seed,
+        args.task
+    )
     Model_FILE = Model_FILE + f'_{args.notes}'
     logging_dir = join(folder_name, 'runs', Model_FILE)
     Model_FILE = join(folder_name, Model_FILE)
@@ -50,14 +57,15 @@ def run(args):
     with open(Model_FILE + '.sh', 'w') as f:
         print(COMMANDLINE, file=f)
 
-    print(COMMANDLINE)
     if args.submit == 'no':
         os.system(COMMANDLINE)  # textattack/roberta-base-ag-news # textattack/roberta-base-imdb
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='training args.')
-    parser.add_argument('--experiment', type=str, default='no-rep', help='no-rep=gpt2gen, no-zipfs, has-rep=regular, rm-window-rep')
+    parser.add_argument(
+        '--experiment', type=str, default='no-rep', help='no-rep=gpt2gen, no-zipfs, has-rep=regular, rm-window-rep'
+    )
     parser.add_argument('--task', type=str, default='wp', help='wp, wikitext')
 
     parser.add_argument('--rand_idx', type=str, default='no', help='no or yes')
